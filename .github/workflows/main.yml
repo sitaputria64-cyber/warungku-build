@@ -15,16 +15,16 @@ jobs:
         run: |
           ZIP_FILE=$(find . -name "*.zip" | head -n 1)
           if [ -z "$ZIP_FILE" ]; then
-            echo "File ZIP tidak ditemukan!"
+            echo "=== ERROR: FILE ZIP TIDAK DITEMUKAN DI REPOSITORI! ==="
+            echo "Pastikan Anda sudah mengunggah file .zip ke halaman depan repositori ini."
             exit 1
           fi
           echo "Mengekstrak $ZIP_FILE..."
-          unzip "$ZIP_FILE" -d project_dir
+          mkdir -p project_dir
+          unzip -o "$ZIP_FILE" -d project_dir
           
-          # Cek jika ZIP berisi folder bungkus lagi di dalamnya
-          if [ -d "project_dir/project-siap-compile" ]; then
-            mv project_dir/project-siap-compile/* project_dir/
-          fi
+          echo "=== ISI FOLDER SETELAH DIEKSTRAK ==="
+          ls -R project_dir
 
       - name: Set up Java JDK 17
         uses: actions/setup-java@v4
@@ -34,17 +34,27 @@ jobs:
 
       - name: Generate Gradle Wrapper
         run: |
-          cd project_dir
+          # Cari di mana letak file build.gradle berada
+          GRADLE_DIR=$(find project_dir -name "build.gradle" -exec dirname {} \; | head -n 1)
+          if [ -z "$GRADLE_DIR" ]; then
+            echo "=== ERROR: File build.gradle tidak ditemukan di dalam ZIP! ==="
+            exit 1
+          fi
+          echo "Folder project utama ditemukan di: $GRADLE_DIR"
+          cd "$GRADLE_DIR"
           npm install -g @ionic/cli
           gradle wrapper --gradle-version 8.2
+          echo "TARGET_DIR=$GRADLE_DIR" >> $GITHUB_ENV
 
       - name: Build Debug APK
         run: |
-          cd project_dir
+          cd ${{ env.TARGET_DIR }}
           ./gradlew assembleDebug
 
       - name: Upload APK Hasil Compile
         uses: actions/upload-artifact@v4
         with:
           name: Aplikasi-WarungKu-Debug
-          path: project_dir/app/build/outputs/apk/debug/*.apk
+          path: |
+            ${{ env.TARGET_DIR }}/app/build/outputs/apk/debug/*.apk
+            ${{ env.TARGET_DIR }}/*/build/outputs/apk/debug/*.apk
